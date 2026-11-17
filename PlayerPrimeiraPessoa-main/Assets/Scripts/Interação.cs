@@ -1,5 +1,4 @@
 using UnityEngine;
-using UnityEngine.Events;
 using UnityEngine.InputSystem;
 using UnityEngine.Video;
 
@@ -10,17 +9,20 @@ public class Interação : MonoBehaviour
     [SerializeField] private Camera CameraDoJogador;
     [SerializeField] private float DistanciaMaxima = 5f;
 
-    [Header("Vídeo da skybox")]
+    [Header("Vídeo")]
+    [SerializeField] private GameObject ObjetoVideo;
     [SerializeField] private VideoPlayer VideoSkybox;
 
-    [Header("Cubo de seleção")]
+    [Header("Partículas")]
+    [SerializeField] private Sistemaparticulas SistemaFumaca;
+
+    [Header("Outline")]
     [SerializeField] private Color CorOutline = Color.white;
     [SerializeField] private float EspessuraOutline = 0.025f;
 
-    [SerializeField] private UnityEvent AoInteragir;
-
     private LineRenderer outline;
-    private bool objetoSelecionado;
+    private bool objetoInteragivelDetectado;
+    private bool interacaoConcluida;
 
     private void Start()
     {
@@ -29,25 +31,42 @@ public class Interação : MonoBehaviour
             CameraDoJogador = GetComponentInChildren<Camera>();
         }
 
-        CriarCuboOutline();
-        outline.enabled = false;
+        if (CameraDoJogador == null)
+        {
+            CameraDoJogador = Camera.main;
+        }
+
+        CriarOutline();
+
+        if (ObjetoVideo != null)
+        {
+            ObjetoVideo.SetActive(false);
+        }
     }
 
     private void Update()
     {
-        VerificarObjetoSelecionado();
+        VerificarObjetoInteragivel();
 
-        if (objetoSelecionado && InteracaoFoiPressionada())
+        if (objetoInteragivelDetectado && InteracaoFoiPressionada())
         {
-            ReproduzirVideo();
-            AoInteragir.Invoke();
+            Interagir();
         }
     }
 
-    private void VerificarObjetoSelecionado()
+    private void VerificarObjetoInteragivel()
     {
+        if (interacaoConcluida)
+        {
+            outline.enabled = false;
+            objetoInteragivelDetectado = false;
+            return;
+        }
+
         if (ObjetoInteragivel == null || CameraDoJogador == null)
         {
+            outline.enabled = false;
+            objetoInteragivelDetectado = false;
             return;
         }
 
@@ -62,12 +81,12 @@ public class Interação : MonoBehaviour
             (informacaoColisao.transform == ObjetoInteragivel.transform ||
              informacaoColisao.transform.IsChildOf(ObjetoInteragivel.transform));
 
-        objetoSelecionado = encontrouObjeto;
+        objetoInteragivelDetectado = encontrouObjeto;
         outline.enabled = encontrouObjeto;
 
         if (encontrouObjeto)
         {
-            AtualizarCuboOutline();
+            AtualizarOutline();
         }
     }
 
@@ -77,42 +96,49 @@ public class Interação : MonoBehaviour
             Keyboard.current != null &&
             Keyboard.current.eKey.wasPressedThisFrame;
 
-        bool controleFoiPressionado =
+        bool gamepadFoiPressionado =
             Gamepad.current != null &&
             Gamepad.current.buttonWest.wasPressedThisFrame;
 
-        bool pressionado = tecladoFoiPressionado || controleFoiPressionado;
-
-        if (pressionado)
-        {
-            Debug.Log("Interação foi pressionada.");
-        }
-
-        return pressionado;
+        return tecladoFoiPressionado || gamepadFoiPressionado;
     }
 
-    private void ReproduzirVideo()
+    private void Interagir()
     {
-        if (VideoSkybox == null)
+        interacaoConcluida = true;
+        objetoInteragivelDetectado = false;
+        outline.enabled = false;
+
+        if (ObjetoVideo != null)
         {
-            Debug.LogError("O campo VideoSkybox não foi configurado no Inspector.");
-            return;
+            ObjetoVideo.SetActive(true);
+
+            VideoPlayer videoPlayer =
+                ObjetoVideo.GetComponent<VideoPlayer>();
+
+            if (videoPlayer != null)
+            {
+                videoPlayer.Play();
+            }
+            else
+            {
+                Debug.LogWarning(
+                    "O ObjetoVideo não possui um componente VideoPlayer.");
+            }
         }
 
-        VideoSkybox.enabled = true;
-        VideoSkybox.Play();
-
-        AoInteragir?.Invoke();
-
-        Debug.Log("Vídeo iniciado e contagem da partícula ativada.");
+        if (SistemaFumaca != null)
+        {
+            SistemaFumaca.IniciarContagem();
+        }
     }
 
-    private void CriarCuboOutline()
+    private void CriarOutline()
     {
-        GameObject objetoCubo = new GameObject("Cubo Outline Branco");
-        objetoCubo.transform.SetParent(transform);
+        GameObject objetoOutline = new GameObject("Outline Branco");
+        objetoOutline.transform.SetParent(transform);
 
-        outline = objetoCubo.AddComponent<LineRenderer>();
+        outline = objetoOutline.AddComponent<LineRenderer>();
         outline.useWorldSpace = true;
         outline.loop = false;
         outline.positionCount = 24;
@@ -121,9 +147,10 @@ public class Interação : MonoBehaviour
         outline.startColor = CorOutline;
         outline.endColor = CorOutline;
         outline.material = CriarMaterialDoOutline();
+        outline.enabled = false;
     }
 
-    private void AtualizarCuboOutline()
+    private void AtualizarOutline()
     {
         Renderer[] renderizadores =
             ObjetoInteragivel.GetComponentsInChildren<Renderer>();
