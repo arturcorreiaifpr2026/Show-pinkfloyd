@@ -2,10 +2,9 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.Video;
 
-public class Interação : MonoBehaviour
+public class ObjetoInteragivel : MonoBehaviour
 {
-    [Header("Objeto interagível")]
-    [SerializeField] private GameObject ObjetoInteragivel;
+    [Header("Configurações")]
     [SerializeField] private Camera CameraDoJogador;
     [SerializeField] private float DistanciaMaxima = 5f;
 
@@ -21,14 +20,16 @@ public class Interação : MonoBehaviour
     [SerializeField] private float EspessuraOutline = 0.025f;
 
     private LineRenderer outline;
-    private bool objetoInteragivelDetectado;
+    private InputAction interactInput; 
+    private bool jogadorOlhando;
     private bool interacaoConcluida;
 
     private void Start()
     {
-        if (CameraDoJogador == null)
+        interactInput = InputSystem.actions.FindAction("Interact");
+        if (interactInput != null)
         {
-            CameraDoJogador = GetComponentInChildren<Camera>();
+            interactInput.Enable();
         }
 
         if (CameraDoJogador == null)
@@ -44,29 +45,30 @@ public class Interação : MonoBehaviour
         }
     }
 
+    private void OnDisable()
+    {
+        if (interactInput != null)
+        {
+            interactInput.Disable();
+        }
+    }
+
     private void Update()
     {
-        VerificarObjetoInteragivel();
+        VerificarVisaoDoJogador();
 
-        if (objetoInteragivelDetectado && InteracaoFoiPressionada())
+        if (jogadorOlhando && InteracaoFoiPressionada())
         {
             Interagir();
         }
     }
 
-    private void VerificarObjetoInteragivel()
+    private void VerificarVisaoDoJogador()
     {
-        if (interacaoConcluida)
+        if (interacaoConcluida || CameraDoJogador == null)
         {
             outline.enabled = false;
-            objetoInteragivelDetectado = false;
-            return;
-        }
-
-        if (ObjetoInteragivel == null || CameraDoJogador == null)
-        {
-            outline.enabled = false;
-            objetoInteragivelDetectado = false;
+            jogadorOlhando = false;
             return;
         }
 
@@ -74,17 +76,17 @@ public class Interação : MonoBehaviour
             CameraDoJogador.transform.position,
             CameraDoJogador.transform.forward);
 
-        bool encontrouObjeto = Physics.Raycast(
+        bool encontrouEsteObjeto = Physics.Raycast(
             raio,
             out RaycastHit informacaoColisao,
             DistanciaMaxima) &&
-            (informacaoColisao.transform == ObjetoInteragivel.transform ||
-             informacaoColisao.transform.IsChildOf(ObjetoInteragivel.transform));
+            (informacaoColisao.transform == transform ||
+             informacaoColisao.transform.IsChildOf(transform));
 
-        objetoInteragivelDetectado = encontrouObjeto;
-        outline.enabled = encontrouObjeto;
+        jogadorOlhando = encontrouEsteObjeto;
+        outline.enabled = encontrouEsteObjeto;
 
-        if (encontrouObjeto)
+        if (encontrouEsteObjeto)
         {
             AtualizarOutline();
         }
@@ -92,29 +94,24 @@ public class Interação : MonoBehaviour
 
     private bool InteracaoFoiPressionada()
     {
-        bool tecladoFoiPressionado =
-            Keyboard.current != null &&
-            Keyboard.current.eKey.wasPressedThisFrame;
-
-        bool gamepadFoiPressionado =
-            Gamepad.current != null &&
-            Gamepad.current.buttonWest.wasPressedThisFrame;
-
-        return tecladoFoiPressionado || gamepadFoiPressionado;
+        if (interactInput != null)
+        {
+            return interactInput.WasPressedThisFrame();
+        }
+        return false;
     }
 
     private void Interagir()
     {
         interacaoConcluida = true;
-        objetoInteragivelDetectado = false;
+        jogadorOlhando = false;
         outline.enabled = false;
 
         if (ObjetoVideo != null)
         {
             ObjetoVideo.SetActive(true);
 
-            VideoPlayer videoPlayer =
-                ObjetoVideo.GetComponent<VideoPlayer>();
+            VideoPlayer videoPlayer = ObjetoVideo.GetComponent<VideoPlayer>();
 
             if (videoPlayer != null)
             {
@@ -122,8 +119,7 @@ public class Interação : MonoBehaviour
             }
             else
             {
-                Debug.LogWarning(
-                    "O ObjetoVideo não possui um componente VideoPlayer.");
+                Debug.LogWarning("O ObjetoVideo não possui um componente VideoPlayer.");
             }
         }
 
@@ -152,8 +148,7 @@ public class Interação : MonoBehaviour
 
     private void AtualizarOutline()
     {
-        Renderer[] renderizadores =
-            ObjetoInteragivel.GetComponentsInChildren<Renderer>();
+        Renderer[] renderizadores = GetComponentsInChildren<Renderer>();
 
         if (renderizadores.Length == 0)
         {
@@ -170,58 +165,32 @@ public class Interação : MonoBehaviour
         Vector3 centro = limites.center;
         Vector3 tamanho = limites.extents;
 
-        Vector3 inferiorEsquerdoFrente =
-            centro + new Vector3(-tamanho.x, -tamanho.y, -tamanho.z);
+        Vector3 inferiorEsquerdoFrente = centro + new Vector3(-tamanho.x, -tamanho.y, -tamanho.z);
+        Vector3 inferiorDireitoFrente = centro + new Vector3(tamanho.x, -tamanho.y, -tamanho.z);
+        Vector3 inferiorDireitoTras = centro + new Vector3(tamanho.x, -tamanho.y, tamanho.z);
+        Vector3 inferiorEsquerdoTras = centro + new Vector3(-tamanho.x, -tamanho.y, tamanho.z);
 
-        Vector3 inferiorDireitoFrente =
-            centro + new Vector3(tamanho.x, -tamanho.y, -tamanho.z);
-
-        Vector3 inferiorDireitoTras =
-            centro + new Vector3(tamanho.x, -tamanho.y, tamanho.z);
-
-        Vector3 inferiorEsquerdoTras =
-            centro + new Vector3(-tamanho.x, -tamanho.y, tamanho.z);
-
-        Vector3 superiorEsquerdoFrente =
-            centro + new Vector3(-tamanho.x, tamanho.y, -tamanho.z);
-
-        Vector3 superiorDireitoFrente =
-            centro + new Vector3(tamanho.x, tamanho.y, -tamanho.z);
-
-        Vector3 superiorDireitoTras =
-            centro + new Vector3(tamanho.x, tamanho.y, tamanho.z);
-
-        Vector3 superiorEsquerdoTras =
-            centro + new Vector3(-tamanho.x, tamanho.y, tamanho.z);
+        Vector3 superiorEsquerdoFrente = centro + new Vector3(-tamanho.x, tamanho.y, -tamanho.z);
+        Vector3 superiorDireitoFrente = centro + new Vector3(tamanho.x, tamanho.y, -tamanho.z);
+        Vector3 superiorDireitoTras = centro + new Vector3(tamanho.x, tamanho.y, tamanho.z);
+        Vector3 superiorEsquerdoTras = centro + new Vector3(-tamanho.x, tamanho.y, tamanho.z);
 
         Vector3[] pontos =
         {
-            inferiorEsquerdoFrente,
-            inferiorDireitoFrente,
-            inferiorDireitoFrente,
-            inferiorDireitoTras,
-            inferiorDireitoTras,
-            inferiorEsquerdoTras,
-            inferiorEsquerdoTras,
-            inferiorEsquerdoFrente,
+            inferiorEsquerdoFrente, inferiorDireitoFrente,
+            inferiorDireitoFrente, inferiorDireitoTras,
+            inferiorDireitoTras, inferiorEsquerdoTras,
+            inferiorEsquerdoTras, inferiorEsquerdoFrente,
 
-            superiorEsquerdoFrente,
-            superiorDireitoFrente,
-            superiorDireitoFrente,
-            superiorDireitoTras,
-            superiorDireitoTras,
-            superiorEsquerdoTras,
-            superiorEsquerdoTras,
-            superiorEsquerdoFrente,
+            superiorEsquerdoFrente, superiorDireitoFrente,
+            superiorDireitoFrente, superiorDireitoTras,
+            superiorDireitoTras, superiorEsquerdoTras,
+            superiorEsquerdoTras, superiorEsquerdoFrente,
 
-            inferiorEsquerdoFrente,
-            superiorEsquerdoFrente,
-            inferiorDireitoFrente,
-            superiorDireitoFrente,
-            inferiorDireitoTras,
-            superiorDireitoTras,
-            inferiorEsquerdoTras,
-            superiorEsquerdoTras
+            inferiorEsquerdoFrente, superiorEsquerdoFrente,
+            inferiorDireitoFrente, superiorDireitoFrente,
+            inferiorDireitoTras, superiorDireitoTras,
+            inferiorEsquerdoTras, superiorEsquerdoTras
         };
 
         outline.SetPositions(pontos);
